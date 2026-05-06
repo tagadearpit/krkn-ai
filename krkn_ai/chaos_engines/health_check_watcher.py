@@ -16,18 +16,21 @@ from typing import List, Dict, Tuple
 import numpy as np
 
 from krkn_ai.utils.logger import get_logger
+from krkn_ai.utils.fs import preprocess_param_string
 from krkn_ai.models.config import (
     HealthCheckApplicationConfig,
     HealthCheckConfig,
     HealthCheckResult,
+    ParameterValue,
 )
 
 logger = get_logger(__name__)
 
 
 class HealthCheckWatcher:
-    def __init__(self, config: HealthCheckConfig):
+    def __init__(self, config: HealthCheckConfig, params: Dict[str, ParameterValue] = None):
         self.config = config
+        self._params = {k: v.value for k, v in (params or {}).items()}
         self._stop_event = threading.Event()
         self._threads: List[threading.Thread] = []
         # Each thread stores results in its own list - ZERO contention!
@@ -43,6 +46,10 @@ class HealthCheckWatcher:
             t.start()
             self._threads.append(t)
 
+    def _resolve_headers(self, app: HealthCheckApplicationConfig) -> dict:
+        merged = {**(self.config.headers or {}), **(app.headers or {})}
+        return {k: preprocess_param_string(v, self._params) for k, v in merged.items()}
+
     def run_health_check(self, health_check: HealthCheckApplicationConfig):
         # Each thread gets its own private results list
         thread_id = threading.current_thread().ident
@@ -54,7 +61,11 @@ class HealthCheckWatcher:
         # Simple polling loop, stops when stop() is called
         while not self._stop_event.is_set():
             try:
-                resp = requests.get(health_check.url, timeout=health_check.timeout)
+                resp = requests.get(
+                    health_check.url,
+                    headers=self._resolve_headers(health_check),
+                    timeout=health_check.timeout,
+                )
                 status = resp.status_code
                 success = status == health_check.status_code
                 error = None

@@ -103,7 +103,7 @@ class KrknRunner:
         else:
             raise NotImplementedError("Scenario unable to run")
 
-        health_check_watcher = HealthCheckWatcher(self.config.health_checks)
+        health_check_watcher = HealthCheckWatcher(self.config.health_checks, self.config.parameters)
 
         # Run command and fetch result
         if env_is_truthy("MOCK_RUN"):

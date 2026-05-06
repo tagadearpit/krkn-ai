@@ -10,6 +10,7 @@ from krkn_ai.models.config import (
     FitnessFunction,
     FitnessFunctionType,
     FitnessFunctionItem,
+    ParameterValue,
     ScenarioConfig,
     HealthCheckConfig,
     HealthCheckApplicationConfig,
@@ -18,6 +19,30 @@ from krkn_ai.models.config import (
     StoppingCriteria,
 )
 from krkn_ai.models.cluster_components import Namespace, Node
+
+
+class TestParameterValue:
+    def test_public_param(self):
+        param = ParameterValue(value="hello")
+        assert param.value == "hello"
+        assert param.is_private is False
+
+    def test_private_param_from_cli(self):
+        param = ParameterValue.from_cli("__SECRET", "token")
+        assert param.value == "token"
+        assert param.is_private is True
+
+    def test_public_param_from_cli(self):
+        param = ParameterValue.from_cli("HOST", "example.com")
+        assert param.is_private is False
+
+    def test_private_serializes_to_redacted(self):
+        param = ParameterValue.from_cli("__TOKEN", "real-secret")
+        assert param.model_dump() == "***"
+
+    def test_public_serializes_to_value(self):
+        param = ParameterValue.from_cli("HOST", "example.com")
+        assert param.model_dump() == "example.com"
 
 
 class TestConfigFile:
@@ -54,7 +79,7 @@ class TestConfigFile:
         scenario_config = ScenarioConfig(**{"pod-scenarios": {"enable": True}})
         config = ConfigFile(
             kubeconfig_file_path="/path/to/kubeconfig",
-            parameters={"key1": "value1"},
+            parameters={"key1": ParameterValue(value="value1")},
             generations=50,
             population_size=20,
             fitness_function=fitness,
@@ -72,7 +97,7 @@ class TestConfigFile:
         )
         assert config.generations == 50
         assert config.population_size == 20
-        assert config.parameters["key1"] == "value1"
+        assert config.parameters["key1"].value == "value1"
         assert config.scenario.pod_scenarios.enable is True
         assert len(config.health_checks.applications) == 1
 
