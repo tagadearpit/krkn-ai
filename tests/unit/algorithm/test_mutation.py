@@ -15,7 +15,7 @@ class TestMutation:
         scenario = DummyScenario(cluster_components=ClusterComponents())
 
         # Set mutation rate to 0 to test parameter mutation path
-        genetic_algorithm.config.scenario_mutation_rate = 0.0
+        genetic_algorithm.current_scenario_mutation_rate = 0.0
 
         mutated = genetic_algorithm.mutate(scenario)
 
@@ -39,7 +39,7 @@ class TestMutation:
         )
 
         # Set mutation rates to 0 to avoid scenario_mutation which requires valid scenarios
-        genetic_algorithm.config.scenario_mutation_rate = 0.0
+        genetic_algorithm.current_scenario_mutation_rate = 0.0
 
         mutated = genetic_algorithm.mutate(composite)
 
