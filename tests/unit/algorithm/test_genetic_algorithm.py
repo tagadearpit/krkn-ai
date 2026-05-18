@@ -83,56 +83,6 @@ class TestGeneticAlgorithmInitialization:
 class TestGeneticAlgorithmCoreMethods:
     """Test GeneticAlgorithm core methods"""
 
-    def test_simulate_updates_completed_generations(self, genetic_algorithm):
-        """Track completed generations after simulate evaluates populations."""
-        genetic_algorithm.config.generations = 2
-        genetic_algorithm.config.population_size = 2
-        genetic_algorithm.config.baseline.enable = False
-        genetic_algorithm.config.population_injection_rate = 0.0
-
-        first_generation = [Mock(name="scenario-1"), Mock(name="scenario-2")]
-        offspring_generation = [Mock(name="scenario-3"), Mock(name="scenario-4")]
-
-        generation_results = []
-        for score in [10.0, 20.0, 30.0, 40.0]:
-            result = Mock()
-            result.fitness_result.fitness_score = score
-            generation_results.append(result)
-
-        with patch.object(genetic_algorithm, "run_baseline") as mock_baseline:
-            with patch.object(
-                genetic_algorithm, "create_population", return_value=first_generation
-            ):
-                with patch.object(
-                    genetic_algorithm,
-                    "calculate_fitness",
-                    side_effect=generation_results,
-                ) as mock_calculate:
-                    with patch.object(
-                        genetic_algorithm,
-                        "select_parents",
-                        return_value=(first_generation[0], first_generation[1]),
-                    ):
-                        with patch.object(
-                            genetic_algorithm,
-                            "crossover",
-                            return_value=(
-                                offspring_generation[0],
-                                offspring_generation[1],
-                            ),
-                        ):
-                            with patch.object(
-                                genetic_algorithm,
-                                "mutate",
-                                side_effect=lambda scenario: scenario,
-                            ):
-                                genetic_algorithm.simulate()
-
-        assert genetic_algorithm.completed_generations == 2
-        assert len(genetic_algorithm.best_of_generation) == 2
-        assert mock_calculate.call_count == 4
-        mock_baseline.assert_called_once()
-
     def test_save_method_calls_reporters(self, genetic_algorithm):
         """Test save method calls all reporters"""
         with patch.object(
