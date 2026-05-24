@@ -22,7 +22,7 @@ dependencies = [
   "plotly>=6.6.0",
   "streamlit>=1.55.0",
   # VCS dependency
-  "krkn-lib @ git+https://github.com/krkn-chaos/krkn-lib",
+  "krkn-lib @ git+https://github.com/krkn-chaos/krkn-lib@v6.0.6",
 ]
 
 [project.scripts]
