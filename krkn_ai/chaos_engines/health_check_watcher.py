@@ -46,7 +46,12 @@ class HealthCheckWatcher:
             f"Starting health check watcher for {len(self.config.applications)} applications"
         )
         for health_check in self.config.applications:
-            t = threading.Thread(target=self.run_health_check, args=(health_check,))
+            t = threading.Thread(
+                target=self.run_health_check,
+                args=(health_check,),
+                daemon=True,
+                name=f"health-check-{health_check.name}",
+            )
             t.start()
             self._threads.append(t)
 
@@ -96,13 +101,23 @@ class HealthCheckWatcher:
                 self._stop_event.set()
                 break
 
-            time.sleep(health_check.interval)
+            if self._stop_event.wait(health_check.interval):
+                break
 
     def stop(self):
         logger.debug("Stopping health check watcher")
         self._stop_event.set()
+        deadline = time.monotonic() + self.config.stop_timeout
         for t in self._threads:
-            t.join()
+            timeout = max(0.0, deadline - time.monotonic())
+            t.join(timeout=timeout)
+            if t.is_alive():
+                logger.warning(
+                    "Health check worker thread %s did not stop within %.2f seconds; "
+                    "continuing shutdown",
+                    t.name,
+                    self.config.stop_timeout,
+                )
 
     def get_results(self) -> Dict[str, List[HealthCheckResult]]:
         """Aggregate results from all threads - called after threads complete"""
