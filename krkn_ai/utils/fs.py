@@ -4,7 +4,11 @@ import yaml
 from collections.abc import Sequence
 from typing import Union, List, Dict
 
+from pydantic import ValidationError
+
 from krkn_ai.models.config import ConfigFile, ParameterValue
+from krkn_ai.models.cluster_components import ClusterComponents
+from krkn_ai.templates.generator import create_krkn_ai_template
 from krkn_ai.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -118,3 +122,90 @@ def save_data_to_file(data: Union[Dict, List], file_path: str):
             json.dump(data, f, indent=4)
     else:
         raise ValueError(f"Unsupported format: {format}")
+
+
+def _union_by_name(existing: list, discovered: list) -> list:
+    """Union two lists by name, keep existing items."""
+    by_name = {item.name: item for item in existing}
+    for item in discovered:
+        if item.name not in by_name:
+            by_name[item.name] = item
+    return list(by_name.values())
+
+
+def merge_components(
+    existing: ClusterComponents, discovered: ClusterComponents
+) -> ClusterComponents:
+    """Merge existing and discovered components, preserving edits."""
+    namespaces = {ns.name: ns for ns in existing.namespaces}
+    for ns in discovered.namespaces:
+        current = namespaces.get(ns.name)
+        if current is None:
+            namespaces[ns.name] = ns
+            continue
+        current.pods = _union_by_name(current.pods, ns.pods)
+        current.services = _union_by_name(current.services, ns.services)
+        current.pvcs = _union_by_name(current.pvcs, ns.pvcs)
+        current.vmis = _union_by_name(current.vmis, ns.vmis)
+    nodes = _union_by_name(existing.nodes, discovered.nodes)
+    return ClusterComponents(namespaces=list(namespaces.values()), nodes=nodes)
+
+
+def _build_merged_config(
+    output: str, discovered: ClusterComponents, kubeconfig: str
+) -> Union[str, None]:
+    """Merge discovered components into the existing file; returns None if unreadable."""
+    try:
+        config = read_config_from_file(output)
+    except (yaml.YAMLError, ValueError, ValidationError) as e:
+        logger.warning(
+            "Could not read existing config %s (%s); leaving file unchanged.",
+            output,
+            e,
+        )
+        return None
+    merged = merge_components(config.cluster_components, discovered)
+    data = merged.model_dump(mode="json", warnings="none", exclude_defaults=True)
+    return create_krkn_ai_template(kubeconfig, data)
+
+
+def _write_fresh(output: str, components: ClusterComponents, kubeconfig: str):
+    """Write fresh config from discovered components."""
+    data = components.model_dump(mode="json", warnings="none", exclude_defaults=True)
+    template = create_krkn_ai_template(kubeconfig, data)
+    with open(output, "w", encoding="utf-8") as f:
+        f.write(template)
+    logger.info("Saved component configuration to %s", output)
+
+
+def save_discovery(
+    output: str,
+    strategy: str,
+    components: ClusterComponents,
+    kubeconfig: str,
+):
+    """Save discovered components per strategy: skip (do nothing), overwrite (replace), or merge (add new)."""
+    strategy = strategy.lower()
+    exists = os.path.exists(output)
+
+    if exists and strategy == "skip":
+        logger.warning(
+            "%s already exists; skipping write "
+            "(use --save-strategy overwrite or merge to change this).",
+            output,
+        )
+        return
+
+    if exists and strategy == "merge":
+        text = _build_merged_config(output, components, kubeconfig)
+        if text is None:
+            return
+        with open(output, "w", encoding="utf-8") as f:
+            f.write(text)
+        logger.info("Merged discovered components into %s", output)
+        return
+
+    if exists and strategy == "overwrite":
+        logger.warning("Overwriting existing %s", output)
+
+    _write_fresh(output, components, kubeconfig)
