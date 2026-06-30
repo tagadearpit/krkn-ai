@@ -262,6 +262,52 @@ class TestSaveDiscovery:
         names = [n["name"] for n in data["cluster_components"]["namespaces"]]
         assert "pay" in names
 
+    def test_merge_preserves_non_component_edits(self, tmp_path):
+        """Merge keeps non-component edits."""
+        path = str(tmp_path / "krkn-ai.yaml")
+        existing = ClusterComponents(namespaces=[Namespace(name="shop")])
+        _write_existing(path, existing)
+        # edit a few non-component fields
+        doc = yaml.safe_load(open(path))
+        doc["generations"] = 50
+        doc["population_size"] = 30
+        doc["fitness_function"]["query"] = "sum(my_custom_metric)"
+        doc["scenario"]["pvc-scenarios"]["enable"] = True
+        with open(path, "w") as f:
+            yaml.safe_dump(doc, f)
+
+        discovered = ClusterComponents(namespaces=[Namespace(name="pay")])
+        save_discovery(path, "merge", discovered, KUBECONFIG)
+
+        result = yaml.safe_load(open(path))
+        # edits survived
+        assert result["generations"] == 50
+        assert result["population_size"] == 30
+        assert result["fitness_function"]["query"] == "sum(my_custom_metric)"
+        assert result["scenario"]["pvc-scenarios"]["enable"] is True
+        # new component added
+        names = [n["name"] for n in result["cluster_components"]["namespaces"]]
+        assert "pay" in names and "shop" in names
+
+    def test_merge_keeps_secrets_and_parameters(self, tmp_path):
+        """Merge keeps elastic.password and parameters."""
+        path = str(tmp_path / "krkn-ai.yaml")
+        _write_existing(path, ClusterComponents(namespaces=[Namespace(name="shop")]))
+        doc = yaml.safe_load(open(path))
+        doc["elastic"] = {"enable": True, "server": "https://es", "password": "s3cret"}
+        doc["parameters"] = {"TOKEN": {"value": "abc", "is_private": False}}
+        with open(path, "w") as f:
+            yaml.safe_dump(doc, f)
+
+        discovered = ClusterComponents(namespaces=[Namespace(name="pay")])
+        save_discovery(path, "merge", discovered, KUBECONFIG)
+
+        result = yaml.safe_load(open(path))
+        assert result["elastic"]["password"] == "s3cret"  # not dropped
+        assert result["parameters"]["TOKEN"]["value"] == "abc"  # not collapsed
+        names = [n["name"] for n in result["cluster_components"]["namespaces"]]
+        assert "pay" in names and "shop" in names
+
     def test_merge_safe_to_repeat(self, tmp_path):
         """Running merge twice produces the same result."""
         path = str(tmp_path / "krkn-ai.yaml")
@@ -313,6 +359,54 @@ class TestSaveDiscovery:
         data = yaml.safe_load(open(path))
         names = [n["name"] for n in data["cluster_components"]["namespaces"]]
         assert "shop" in names
+
+    def test_overwrite_applies_scenario_enables(self, tmp_path):
+        """Overwrite applies scenario enables."""
+        path = str(tmp_path / "krkn-ai.yaml")
+        with open(path, "w") as f:
+            f.write("original: true\n")
+        components = ClusterComponents(namespaces=[Namespace(name="shop")])
+        from krkn_ai.models.scenario.factory import scenario_specs
+
+        enables = {n: n == "pvc_scenarios" for n, _ in scenario_specs}
+        save_discovery(
+            path,
+            "overwrite",
+            components,
+            KUBECONFIG,
+            scenario_enables=enables,
+        )
+        data = yaml.safe_load(open(path))
+        assert data["scenario"]["pvc-scenarios"]["enable"] is True
+        assert data["scenario"]["pod-scenarios"]["enable"] is False
+
+    def test_overwrite_without_enables_disables_all(self, tmp_path):
+        """No scenario_enables disables all scenarios."""
+        path = str(tmp_path / "krkn-ai.yaml")
+        components = ClusterComponents(namespaces=[Namespace(name="shop")])
+        save_discovery(path, "overwrite", components, KUBECONFIG)
+        data = yaml.safe_load(open(path))
+        assert data["scenario"]["pod-scenarios"]["enable"] is False
+        assert data["scenario"]["pvc-scenarios"]["enable"] is False
+
+    def test_merge_existing_ignores_scenario_enables(self, tmp_path):
+        """Merge keeps the user's scenario flags."""
+        path = str(tmp_path / "krkn-ai.yaml")
+        _write_existing(path, ClusterComponents(namespaces=[Namespace(name="shop")]))
+        discovered = ClusterComponents(namespaces=[Namespace(name="pay")])
+        from krkn_ai.models.scenario.factory import scenario_specs
+
+        enables = {n: n == "pvc_scenarios" for n, _ in scenario_specs}
+        save_discovery(
+            path,
+            "merge",
+            discovered,
+            KUBECONFIG,
+            scenario_enables=enables,
+        )
+        data = yaml.safe_load(open(path))
+        assert data["scenario"]["pvc-scenarios"]["enable"] is False
+        assert data["scenario"]["pod-scenarios"]["enable"] is False
 
     def test_strategy_is_case_insensitive(self, tmp_path):
         """Strategy matching ignores case (e.g. SKIP behaves like skip)."""

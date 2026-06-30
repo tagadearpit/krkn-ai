@@ -154,9 +154,10 @@ def merge_components(
 def _build_merged_config(
     output: str, discovered: ClusterComponents, kubeconfig: str
 ) -> Union[str, None]:
-    """Merge discovered components into the existing file; returns None if unreadable."""
+    """Merge discovered components into the existing config, keeping the user's
+    edits."""
     try:
-        config = read_config_from_file(output)
+        config = read_config_from_file(output, kubeconfig=kubeconfig)
     except (yaml.YAMLError, ValueError, ValidationError) as e:
         logger.warning(
             "Could not read existing config %s (%s); leaving file unchanged.",
@@ -164,15 +165,27 @@ def _build_merged_config(
             e,
         )
         return None
+    # edit the raw file so user fields aren't dropped on a model dump
+    with open(output, "r", encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
     merged = merge_components(config.cluster_components, discovered)
-    data = merged.model_dump(mode="json", warnings="none", exclude_defaults=True)
-    return create_krkn_ai_template(kubeconfig, data)
+    raw["cluster_components"] = merged.model_dump(
+        mode="json", warnings="none", exclude_defaults=True
+    )
+    return yaml.safe_dump(
+        raw, default_flow_style=False, sort_keys=False, allow_unicode=True
+    )
 
 
-def _write_fresh(output: str, components: ClusterComponents, kubeconfig: str):
+def _write_fresh(
+    output: str,
+    components: ClusterComponents,
+    kubeconfig: str,
+    scenario_enables: dict = None,
+):
     """Write fresh config from discovered components."""
     data = components.model_dump(mode="json", warnings="none", exclude_defaults=True)
-    template = create_krkn_ai_template(kubeconfig, data)
+    template = create_krkn_ai_template(kubeconfig, data, scenario_enables)
     with open(output, "w", encoding="utf-8") as f:
         f.write(template)
     logger.info("Saved component configuration to %s", output)
@@ -183,6 +196,7 @@ def save_discovery(
     strategy: str,
     components: ClusterComponents,
     kubeconfig: str,
+    scenario_enables: dict = None,
 ):
     """Save discovered components per strategy: skip (do nothing), overwrite (replace), or merge (add new)."""
     strategy = strategy.lower()
@@ -208,4 +222,4 @@ def save_discovery(
     if exists and strategy == "overwrite":
         logger.warning("Overwriting existing %s", output)
 
-    _write_fresh(output, components, kubeconfig)
+    _write_fresh(output, components, kubeconfig, scenario_enables)

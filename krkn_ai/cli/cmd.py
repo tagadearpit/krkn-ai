@@ -22,6 +22,7 @@ from krkn_ai.models.custom_errors import (
 )
 from krkn_ai.utils.fs import read_config_from_file, save_discovery
 from krkn_ai.utils.cluster_manager import ClusterManager
+from krkn_ai.models.scenario.factory import ScenarioFactory
 
 
 @click.group(context_settings={"show_default": True})
@@ -249,7 +250,7 @@ def monitor(ctx, output: str, port: int):
     "--save-strategy",
     type=click.Choice(["skip", "overwrite", "merge"], case_sensitive=False),
     default="skip",
-    help="How to save: skip, overwrite (replace), or merge (add new). Note: merge does not preserve comments inside cluster_components.",
+    help="How to save: skip, overwrite (replace), or merge (add new components, keep your edits). Note: merge does not preserve comments.",
 )
 @click.pass_context
 def discover(
@@ -289,4 +290,15 @@ def discover(
         logger.error("An unexpected error occurred during discovery: %s", e)
         sys.exit(1)
 
-    save_discovery(output, save_strategy, cluster_components, kubeconfig)
+    scenario_enables = (
+        ScenarioFactory.recommend_enabled_scenarios(cluster_components, kubeconfig)
+        if not os.path.exists(output) or save_strategy.lower() == "overwrite"
+        else None
+    )
+    save_discovery(
+        output,
+        save_strategy,
+        cluster_components,
+        kubeconfig,
+        scenario_enables=scenario_enables,
+    )
