@@ -15,6 +15,7 @@ from krkn_ai.models.config import (
     ScenarioConfig,
     HealthCheckConfig,
     HealthCheckApplicationConfig,
+    ElasticConfig,
     OutputConfig,
     ClusterComponents,
     StoppingCriteria,
@@ -196,6 +197,27 @@ class TestHealthCheckConfig:
         assert app.status_code == 200
         assert app.timeout == 4
         assert app.interval == 2
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "localhost:8080/health",
+            "api.internal/health",
+            "ftp://api.internal/health",
+        ],
+    )
+    def test_health_check_application_rejects_invalid_http_urls(self, url):
+        """Health check endpoints must include an HTTP or HTTPS scheme."""
+        with pytest.raises(ValidationError, match="http|https|URL"):
+            HealthCheckApplicationConfig(name="test-app", url=url)
+
+    def test_elastic_config_rejects_invalid_server_url(self):
+        """Enabled Elasticsearch integration must use a valid HTTP(S) URL."""
+        with pytest.raises(ValidationError, match="http|https|URL"):
+            ElasticConfig(enable=True, server="localhost:9200")
+
+        config = ElasticConfig(enable=True, server="http://localhost:9200")
+        assert str(config.server) == "http://localhost:9200/"
 
     def test_health_check_config_headers(self):
         """Test optional headers field on both health check config models"""
