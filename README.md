@@ -207,6 +207,11 @@ results/
     └── logs/
 ```
 
+`results.json` includes `population_lineage` when the genetic algorithm runs.
+Each node has a UUID, generation, parent UUIDs, mutation metadata, and fitness
+score; the monitor renders the lineage graph and mutation-impact summary when
+that data is available.
+
 > You can also run Krkn-AI as a container with Podman or on Kubernetes. See [container instructions](./containers/README.md).
 
 ## 🤝 Contributing

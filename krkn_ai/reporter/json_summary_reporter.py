@@ -31,6 +31,7 @@ class JSONSummaryReporter:
         seen_population: Dict[Any, CommandRunResult],
         best_of_generation: List[CommandRunResult],
         baseline_result: Optional[CommandRunResult] = None,
+        all_evaluations: Optional[List[CommandRunResult]] = None,
         start_time: Optional[datetime.datetime] = None,
         end_time: Optional[datetime.datetime] = None,
         completed_generations: int = 0,
@@ -43,6 +44,7 @@ class JSONSummaryReporter:
         self.seen_population = seen_population
         self.best_of_generation = best_of_generation
         self.baseline_result = baseline_result
+        self.all_evaluations = all_evaluations
         self.start_time = start_time
         self.end_time = end_time
         self.completed_generations = completed_generations
@@ -120,6 +122,7 @@ class JSONSummaryReporter:
             },
             "best_scenarios": best_scenarios,
             "fitness_progression": fitness_progression,
+            "population_lineage": self._build_population_lineage(),
         }
 
         if self.baseline_result is not None:
@@ -180,6 +183,36 @@ class JSONSummaryReporter:
                 }
             )
         return best_scenarios
+
+    def _build_population_lineage(self) -> List[Dict[str, Any]]:
+        """Export UUID-consistent nodes for reconstructing the GA lineage graph."""
+        source = self.all_evaluations
+        if source is None:
+            source = list(self.seen_population.values())
+
+        lineage = []
+        emitted_uuids = set()
+        for result in source:
+            scenario_uuid = getattr(result.scenario, "id", None)
+            if scenario_uuid is None or scenario_uuid in emitted_uuids:
+                continue
+            emitted_uuids.add(scenario_uuid)
+            lineage.append(
+                {
+                    "scenario_id": result.scenario_id,
+                    "scenario_uuid": scenario_uuid,
+                    "generation": result.generation_id,
+                    "fitness_score": result.fitness_result.fitness_score,
+                    "parent_uuids": list(
+                        getattr(result.scenario, "parent_uuids", []) or []
+                    ),
+                    "mutation_type": getattr(result.scenario, "mutation_type", None),
+                    "mutated_parameters": list(
+                        getattr(result.scenario, "mutated_parameters", []) or []
+                    ),
+                }
+            )
+        return lineage
 
     def save(self, output_dir: str):
         """

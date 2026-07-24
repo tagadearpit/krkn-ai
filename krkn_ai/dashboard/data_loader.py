@@ -26,6 +26,21 @@ def load_results_csv(output_dir: str):
 
 
 @st.cache_data(ttl=300)
+def load_results_json(output_dir: str):
+    """Load the structured summary used by lineage and analytics views."""
+    json_path = os.path.join(output_dir, "results.json")
+    if not os.path.exists(json_path):
+        return {}
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        logging.exception("Failed to read %s", json_path)
+        return {}
+
+
+@st.cache_data(ttl=300)
 def load_config_yaml(output_dir: str):
     config_path = os.path.join(output_dir, "krkn-ai.yaml")
     if os.path.exists(config_path):

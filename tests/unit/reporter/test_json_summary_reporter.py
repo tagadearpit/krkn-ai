@@ -189,3 +189,31 @@ class TestJSONSummaryReporter:
         with open(path, "r") as f:
             saved_content = json.load(f)
             assert saved_content == expected_summary
+
+    def test_population_lineage_uses_uuid_namespace(self, minimal_config):
+        now = datetime.datetime.now(datetime.timezone.utc)
+        parent = DummyScenario(cluster_components=minimal_config.cluster_components)
+        child = DummyScenario(cluster_components=minimal_config.cluster_components)
+        child.parent_uuids = [parent.id]
+        child.mutation_type = "crossover"
+        child.mutated_parameters = ["duration"]
+        parent_result = CommandRunResult(
+            generation_id=0, scenario_id=1, scenario=parent, cmd="test", log="test",
+            returncode=0, start_time=now, end_time=now,
+            fitness_result=FitnessResult(fitness_score=2.0),
+        )
+        child_result = CommandRunResult(
+            generation_id=1, scenario_id=2, scenario=child, cmd="test", log="test",
+            returncode=0, start_time=now, end_time=now,
+            fitness_result=FitnessResult(fitness_score=5.0),
+        )
+        reporter = JSONSummaryReporter(
+            run_uuid="lineage", config=minimal_config,
+            algo_config=minimal_config.genetic,
+            seen_population={1: parent_result, 2: child_result},
+            best_of_generation=[], all_evaluations=[parent_result, child_result],
+        )
+
+        lineage = reporter.generate_summary()["population_lineage"]
+        assert lineage[1]["scenario_uuid"] == child.id
+        assert lineage[1]["parent_uuids"] == [parent.id]
