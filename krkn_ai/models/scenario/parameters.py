@@ -143,9 +143,7 @@ class NodeMemoryPercentageParameter(BaseParameter):
     value: int = 50
 
     def get_value(self, return_krknhub_name: bool = False):
-        if return_krknhub_name:
-            return f"{self.value}%"
-        return self.value
+        return f"{self.value}%"
 
     def mutate(self):
         if rng.random() < 0.5:
@@ -219,7 +217,7 @@ class ActionTimeParameter(BaseParameter):
 
 
 class NetworkScenarioTypeParameter(BaseParameter):
-    krknhub_name: str = "NETWORK_SCENARIO_TYPE"
+    krknhub_name: str = "TRAFFIC_TYPE"
     krknctl_name: str = "traffic-type"
     value: str = "ingress"
 
