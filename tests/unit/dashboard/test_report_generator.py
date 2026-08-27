@@ -23,6 +23,8 @@ def test_generate_html_report_empty():
     assert soup.find(id="tab-health")
     assert soup.find(id="tab-detailed")
     assert soup.find(id="tab-anomalies")
+    assert soup.find(id="tab-logs")
+    assert soup.find(id="tab-config")
     assert soup.find(id="tab-failed")
 
 
@@ -122,3 +124,61 @@ def test_subsec():
 def test_na():
     html = _na("Custom Msg")
     assert "<p class='muted'>Custom Msg</p>" in html
+
+
+def test_generate_html_report_includes_logs_and_configuration():
+    html = generate_html_report(
+        pd.DataFrame(),
+        df_logs=[
+            {
+                "scenario_id": 3,
+                "job_status": True,
+                "scenario_type": "pod-kill",
+                "duration": "4s",
+                "exit_status": 0,
+                "raw_text": "raw scenario log",
+            }
+        ],
+        config_data={
+            "fitness_function": {"query": "up"},
+            "scenario": {"pod-scenarios": {"enable": True}},
+        },
+        scen_id_to_name={"3": "pod-scenarios"},
+    )
+    soup = BeautifulSoup(html, "html.parser")
+    assert soup.find(id="tab-logs")
+    assert soup.find(id="tab-config")
+    assert "raw scenario log" in html
+    assert "pod-scenarios" in html
+    assert "up" in html
+
+
+def test_generate_html_report_includes_optional_lineage_section():
+    lineage = pd.DataFrame(
+        {
+            "scenario_id": ["1", "2"],
+            "scenario_uuid": ["root", "child"],
+            "parent_ids": [[], ["root"]],
+            "generation": [0, 1],
+            "origin": ["initial", "parameter_mutation"],
+            "fitness_score": [1.0, 2.5],
+        }
+    )
+    html = generate_html_report(pd.DataFrame(), df_lineage=lineage)
+    soup = BeautifulSoup(html, "html.parser")
+    assert soup.find(id="tab-lineage")
+    assert "parameter_mutation" in html
+    assert "child" in html
+
+
+def test_generate_html_report_redacts_configuration_secrets():
+    html = generate_html_report(
+        pd.DataFrame(),
+        config_data={
+            "prometheus_token": "do-not-leak",
+            "health_checks": {"headers": {"Authorization": "Bearer secret"}},
+        },
+    )
+    assert "do-not-leak" not in html
+    assert "Bearer secret" not in html
+    assert "***" in html
